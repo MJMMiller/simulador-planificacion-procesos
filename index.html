@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simulador de Planificación de Procesos</title>
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<main class="page">
+    <section class="card">
+        <header class="card-header">
+            <h1>Simulador de Planificación de Procesos</h1>
+        </header>
+
+        <div class="form-grid">
+            <div class="panel">
+                <h3>Ingresar procesos</h3>
+                <div class="input-row">
+                    <label for="totalProcesos">Total de procesos</label>
+                    <input type="number" id="totalProcesos" value="5" min="1">
+                    <button class="btn" onclick="generarTabla()">Generar</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table id="tablaProcesos"></table>
+                </div>
+
+                <div class="input-row">
+                    <label for="quantum">Quantum (RR)</label>
+                    <input type="number" id="quantum" value="2">
+                </div>
+
+                <div class="controls-row">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="btn primary" id="simRRBtn">Simular RR</button>
+                        <button class="btn primary" id="simSJFBtn">Simular SJF</button>
+                    </div>
+                    <div style="margin-left:auto">
+                        <button class="btn" id="comparativaBtn">Comparativa</button>
+                    </div>
+                </div>
+
+                <div class="graph-row">
+                    <canvas id="grafica" style="margin-top: 12px; display:none; width:100%; max-width:420px;"></canvas>
+                </div>
+                
+            </div>
+            <div class="panel">
+                <h3>Visualización</h3>
+
+                <h4>Línea de tiempo</h4>
+                <div class="timeline-wrap">
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                        <button class="btn" id="togglePlayBtn" disabled>Iniciar</button>
+                    </div>
+                    <div class="timer-row-inline" style="margin-bottom:6px;">
+                        <span class="timer-label">Tiempo:</span>
+                        <span id="timerLabel">0s</span>
+                    </div>
+                    <div class="progress-track" aria-hidden="true">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <ul class="steps" id="stepsList"></ul>
+                </div>
+
+                <h4>Diagrama de Gantt</h4>
+                <div id="ganttContainer"></div>
+
+                <h4>Tiempos</h4>
+                <div id="tablaResultados"></div>
+            </div>
+        </div>
+
+        <footer class="card-footer">
+            <small>Echo por Mateo Miller - Nicolas Cedillo</small>
+        </footer>
+    </section>
+</main>
+
+<script src="script.js"></script>
+
+</body>
+</html>
