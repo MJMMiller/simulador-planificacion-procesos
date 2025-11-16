@@ -82,16 +82,43 @@ function dibujarGantt(barras) {
 }
 
 function mostrarResultados(res) {
-    let tabla = `
-        <table>
-        <tr><th>Proceso</th><th>Espera</th><th>Retorno</th></tr>
-    `;
-    res.forEach(r => {
-        tabla += `<tr><td>${r.nombre}</td><td>${r.espera}</td><td>${r.retorno}</td></tr>`;
-    });
-    tabla += "</table>";
+        let tabla = `
+                <table>
+                <thead>
+                    <tr><th>Proceso</th><th>Espera</th><th>Retorno</th></tr>
+                </thead>
+                <tbody>
+        `;
 
-    document.getElementById("tablaResultados").innerHTML = tabla;
+        const ordered = res.slice().sort((a,b)=>{
+            const ma = /P(\d+)/i.exec(a.nombre);
+            const mb = /P(\d+)/i.exec(b.nombre);
+            const na = ma ? Number.parseInt(ma[1],10) : a.nombre;
+            const nb = mb ? Number.parseInt(mb[1],10) : b.nombre;
+            if (typeof na === 'number' && typeof nb === 'number') return na - nb;
+            return String(na).localeCompare(String(nb));
+        });
+
+        ordered.forEach(r => {
+            tabla += `<tr><td>${r.nombre}</td><td>${r.espera}</td><td>${r.retorno}</td></tr>`;
+        });
+
+        tabla += `</tbody>`;
+
+        // calcular promedios
+        const count = res.length || 0;
+        const avgEspera = count ? (res.reduce((a,b) => a + (b.espera||0), 0) / count) : 0;
+        const avgRetorno = count ? (res.reduce((a,b) => a + (b.retorno||0), 0) / count) : 0;
+
+        tabla += `
+            <tfoot>
+                <tr class="avg-row"><th>Promedio</th><th>${avgEspera.toFixed(2)}</th><th>${avgRetorno.toFixed(2)}</th></tr>
+            </tfoot>
+        `;
+
+        tabla += `</table>`;
+
+        document.getElementById("tablaResultados").innerHTML = tabla;
 }
 
 function computeSJF() {
@@ -172,7 +199,6 @@ function computeRR() {
 
 const animationState = { paused: false, stopped: false, speed: 1 };
 
-// Timer / play-pause control (logical seconds of the simulation)
 let elapsedSeconds = 0;
 
 function updateTimerLabel() {
@@ -181,7 +207,6 @@ function updateTimerLabel() {
 }
 
 function startTimer() {
-    // marker, actual updates happen inside animateGantt based on logical progress
     animationState.timerRunning = true;
 }
 
@@ -239,7 +264,6 @@ async function animateGantt(gantt) {
         while (true) {
             if (animationState.stopped) break;
 
-            // handle pause: accumulate paused time so it doesn't count towards segMs
             if (animationState.paused) {
                 if (pauseStartedAt === null) pauseStartedAt = Date.now();
                 await new Promise(r => setTimeout(r, 120));
@@ -273,7 +297,6 @@ async function animateGantt(gantt) {
 
         elapsedUnits += seg.duracion || 0;
 
-        // ensure progress reaches the updated point after finishing this segment
         const pctAfter = Math.min(100, (elapsedUnits / total) * 100);
         if (progressFill) progressFill.style.width = pctAfter.toFixed(2) + '%';
 
@@ -296,7 +319,6 @@ function simularSJF() {
     const { gantt, res } = computeSJF();
     dibujarGantt(gantt);
     mostrarResultados(res);
-    // prepare timer and controls
     resetTimer();
     animationState.paused = false;
     animationState.stopped = false;
@@ -310,7 +332,6 @@ function simularRR() {
     const { gantt, res } = computeRR();
     dibujarGantt(gantt);
     mostrarResultados(res);
-    // prepare timer and controls
     resetTimer();
     animationState.paused = false;
     animationState.stopped = false;
@@ -329,7 +350,6 @@ function stopAnimation() {
     for (const s of steps) s.classList.remove('active','done');
     const progressFill = document.getElementById('progressFill');
     if (progressFill) progressFill.style.width = '0%';
-    // stop timer and reset label
     stopTimer();
     const toggleBtn = document.getElementById('togglePlayBtn');
     if (toggleBtn) { toggleBtn.innerText = 'Iniciar'; toggleBtn.disabled = true; }
@@ -380,7 +400,6 @@ function mostrarGrafica() {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    // generar tabla inicial
     generarTabla();
     const simRRBtn = document.getElementById('simRRBtn');
     const simSJFBtn = document.getElementById('simSJFBtn');
@@ -388,7 +407,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleBtn = document.getElementById('togglePlayBtn');
 
     if (toggleBtn) {
-        // single click: toggle pause/resume for timeline, Gantt and timer
         toggleBtn.addEventListener('click', () => {
             if (animationState.stopped) return;
             animationState.paused = !animationState.paused;
