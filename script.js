@@ -2,7 +2,7 @@ let resultadosRR = [];
 let resultadosSJF = [];
 
 const RR_PALETTE = ['#4f8cff', '#f4b400', '#28a745', '#ff6b6b', '#8a63e6', '#00bfa6', '#ff9f43'];
-const SJF_PALETTE = ['#f28ab2', '#ffe2a3', '#b3f0c1', '#c6d8ff', '#ffd1e3', '#e8d4a2', '#d0f4f1'];
+const SJF_PALETTE = ['#FF6B6B', '#FFB86B', '#FFD166', '#6BCB77', '#4ECDC4', '#4D96FF', '#B388EB'];
 
 function textColorForBg(hex) {
     if (!hex) return '#fff';
@@ -14,6 +14,13 @@ function textColorForBg(hex) {
     const b = parseInt(full.substring(4,6),16);
     const lum = 0.2126*r + 0.7152*g + 0.0722*b;
     return lum > 160 ? '#111' : '#fff';
+}
+
+function getPriorityRankVal(prio) {
+    // returns a numeric rank such that smaller = higher priority for sorting
+    const mode = (document.getElementById('platformSelect') && document.getElementById('platformSelect').value) || 'linux';
+    const v = Number.parseInt(prio) || 0;
+    return mode === 'linux' ? v : -v;
 }
 
 function colorRandom() {
@@ -30,6 +37,7 @@ function generarTabla() {
             <th>Nombre</th>
             <th>Tiempo</th>
             <th>Prioridad</th>
+            <th>Llegada</th>
         </tr>
         </thead>
         <tbody id="tablaBody"></tbody>
@@ -43,6 +51,7 @@ function generarTabla() {
             <td><input type="text" value="P${i}" id="p${i}_n"></td>
             <td><input type="number" value="1" min="1" id="p${i}_t"></td>
             <td><input type="number" value="1" min="1" id="p${i}_pri"></td>
+            <td><input type="number" value="0" min="0" id="p${i}_l"></td>
         `;
         body.appendChild(row);
     }
@@ -59,9 +68,9 @@ function getProcesos() {
         if (!nombreEl || !tiempoEl || !priEl) continue;
         proces.push({
             nombre: nombreEl.value || `P${i}`,
-            tiempo: Number.parseInt(tiempoEl.value) || 1,
-            prioridad: Number.parseInt(priEl.value) || 1,
-            llegada: 0
+                tiempo: Number.parseInt(tiempoEl.value) || 1,
+                prioridad: Number.parseInt(priEl.value) || 1,
+                llegada: Number.parseInt((document.getElementById(`p${i}_l`) && document.getElementById(`p${i}_l`).value) || 0) || 0
         });
     }
     return proces;
@@ -122,26 +131,64 @@ function mostrarResultados(res) {
 }
 
 function computeSJF() {
-    let procesos = getProcesos();
-    procesos.sort((a, b) => a.tiempo - b.tiempo);
+    // SJF non-preemptive with arrivals: at each time select available job with smallest burst
+    const procesos = getProcesos();
 
+    // asignar colores por nombre de proceso (P1,P2,...) para consistencia
+    const colorMap = {};
+    for (const [idx, p] of procesos.entries()) {
+        const exec = /P(\d+)/i.exec(String(p.nombre));
+        const keyIdx = exec ? (Number.parseInt(exec[1], 10) - 1) : idx;
+        colorMap[p.nombre] = SJF_PALETTE[(keyIdx) % SJF_PALETTE.length];
+    }
+
+    // preparar objetos con tipos numéricos
+    const procesosObjs = procesos.map(p => ({
+        nombre: p.nombre,
+        tiempo: Number.parseInt(p.tiempo) || 0,
+        prioridad: Number.parseInt(p.prioridad) || 0,
+        llegada: Number.parseInt(p.llegada) || 0
+    }));
+
+    const remaining = procesosObjs.slice();
     let tiempo = 0;
-    let gantt = [];
-    let res = [];
+    const gantt = [];
+    const res = [];
 
-    for (let i = 0; i < procesos.length; i++) {
-        const p = procesos[i];
-        const color = SJF_PALETTE[i % SJF_PALETTE.length];
+    while (remaining.length > 0) {
+        // procesos disponibles
+        const disponibles = remaining.filter(p => p.llegada <= tiempo);
+        if (disponibles.length === 0) {
+            // avanzar al siguiente arribo
+            const next = Math.min(...remaining.map(r => r.llegada));
+            tiempo = Math.max(tiempo, next);
+            continue;
+        }
 
-        gantt.push({ nombre: p.nombre, duracion: p.tiempo, color });
-
-        res.push({
-            nombre: p.nombre,
-            espera: tiempo,
-            retorno: tiempo + p.tiempo
+        disponibles.sort((a, b) => {
+            if (a.tiempo !== b.tiempo) return a.tiempo - b.tiempo;
+            if (a.prioridad !== b.prioridad) return a.prioridad - b.prioridad;
+            if (a.llegada !== b.llegada) return a.llegada - b.llegada;
+            return String(a.nombre).localeCompare(String(b.nombre));
         });
 
-        tiempo += p.tiempo;
+        const sel = disponibles[0];
+        const start = Math.max(tiempo, sel.llegada);
+        const completion = start + sel.tiempo;
+
+        const waiting = start - sel.llegada;
+        const turnaround = completion - sel.llegada;
+
+        const color = colorMap[sel.nombre] || SJF_PALETTE[0];
+
+        gantt.push({ nombre: sel.nombre, duracion: sel.tiempo, color });
+        res.push({ nombre: sel.nombre, espera: waiting, retorno: turnaround });
+
+        tiempo = completion;
+
+        // eliminar seleccionado
+        const ix = remaining.indexOf(sel);
+        if (ix >= 0) remaining.splice(ix, 1);
     }
 
     resultadosSJF = res;
@@ -150,50 +197,126 @@ function computeSJF() {
 
 function computeRR() {
     let quantum = Number.parseInt(document.getElementById("quantum").value) || 1;
-    let procesos = getProcesos();
-
-    const colorMap = {};
-        for (const [idx, p] of procesos.entries()) {
+    const procesos = getProcesos().map((p, idx) => ({
+        nombre: p.nombre,
+        arrival: Number.parseInt(p.llegada) || 0,
+        remaining: Number.parseInt(p.tiempo) || 0,
+        burst: Number.parseInt(p.tiempo) || 0,
+        prioridad: Number.parseInt(p.prioridad) || 0,
+        color: (() => {
             const exec = /P(\d+)/i.exec(String(p.nombre));
             const keyIdx = exec ? (Number.parseInt(exec[1], 10) - 1) : idx;
-            colorMap[p.nombre] = RR_PALETTE[(keyIdx) % RR_PALETTE.length];
-    }
-
-    let cola = procesos.map(p => ({
-        nombre: p.nombre,
-        tiempoRestante: p.tiempo,
-        tiempo: p.tiempo,
-        color: colorMap[p.nombre] || colorRandom(),
-        inicio: null
+            return RR_PALETTE[(keyIdx) % RR_PALETTE.length];
+        })()
     }));
 
+    const all = procesos.slice();
     let tiempo = 0;
-    let gantt = [];
-    let res = [];
+    const gantt = [];
+    const res = [];
+    const ready = [];
 
-    while (cola.length > 0) {
-        let p = cola.shift();
-        let ejecutar = Math.min(quantum, p.tiempoRestante);
+    const notFinished = () => all.some(pr => pr.remaining > 0);
 
-        gantt.push({ nombre: p.nombre, duracion: ejecutar, color: p.color });
+    while (notFinished()) {
+        // push newly arrived
+        for (const pr of all) {
+            if (pr.arrival <= tiempo && pr.remaining > 0 && !ready.includes(pr)) ready.push(pr);
+        }
 
-        if (p.inicio === null) p.inicio = tiempo;
+        if (ready.length === 0) {
+            // advance to next arrival
+            const nextArr = Math.min(...all.filter(p => p.remaining > 0).map(p => p.arrival));
+            tiempo = Math.max(tiempo, nextArr);
+            for (const pr of all) {
+                if (pr.arrival <= tiempo && pr.remaining > 0 && !ready.includes(pr)) ready.push(pr);
+            }
+            if (ready.length === 0) continue;
+        }
 
-        tiempo += ejecutar;
-        p.tiempoRestante -= ejecutar;
+        const p = ready.shift();
+        const exec = Math.min(quantum, p.remaining);
+        const start = tiempo;
+        gantt.push({ nombre: p.nombre, duracion: exec, color: p.color });
 
-        if (p.tiempoRestante > 0) {
-            cola.push(p);
+        tiempo += exec;
+        p.remaining -= exec;
+
+        // enqueue processes that arrived during execution
+        for (const pr of all) {
+            if (pr.arrival > start && pr.arrival <= tiempo && pr.remaining > 0 && !ready.includes(pr) && pr !== p) ready.push(pr);
+        }
+
+        if (p.remaining > 0) {
+            ready.push(p);
         } else {
-            res.push({
-                nombre: p.nombre,
-                espera: p.inicio,
-                retorno: tiempo
-            });
+            const completion = tiempo;
+            const waiting = completion - p.arrival - p.burst;
+            const turnaround = completion - p.arrival;
+            res.push({ nombre: p.nombre, espera: waiting, retorno: turnaround });
         }
     }
 
     resultadosRR = res;
+    return { gantt, res };
+}
+
+function computePriority() {
+    // Priority scheduling (non-preemptive), Linux-style: smaller number = higher priority (executes earlier)
+    const procesos = getProcesos().map(p => ({ ...p }));
+
+    // stable color mapping by name (same as RR)
+    const colorMap = {};
+    for (const [idx, p] of procesos.entries()) {
+        const exec = /P(\d+)/i.exec(String(p.nombre));
+        const keyIdx = exec ? (Number.parseInt(exec[1], 10) - 1) : idx;
+        colorMap[p.nombre] = RR_PALETTE[(keyIdx) % RR_PALETTE.length];
+    }
+
+    let tiempo = 0;
+    const gantt = [];
+    const res = [];
+
+    const remaining = procesos.slice();
+
+    while (remaining.length > 0) {
+        // obtener procesos disponibles
+        const disponibles = remaining.filter(p => (p.llegada || 0) <= tiempo);
+
+        let seleccionado = null;
+        if (disponibles.length === 0) {
+            // avanzar al siguiente arribo
+            const siguienteLlegada = Math.min(...remaining.map(r => r.llegada || 0));
+            tiempo = Math.max(tiempo, siguienteLlegada);
+            continue;
+        } else {
+            // elegir por prioridad: menor valor = mayor prioridad
+            disponibles.sort((a, b) => {
+                if (a.prioridad !== b.prioridad) return a.prioridad - b.prioridad;
+                if ((a.llegada || 0) !== (b.llegada || 0)) return (a.llegada || 0) - (b.llegada || 0);
+                return String(a.nombre).localeCompare(String(b.nombre));
+            });
+            seleccionado = disponibles[0];
+        }
+
+        // ejecutar seleccionado de forma no preemptive
+        const start = Math.max(tiempo, seleccionado.llegada || 0);
+        const completion = start + (seleccionado.tiempo || 0);
+        const espera = start - (seleccionado.llegada || 0);
+        const retorno = completion - (seleccionado.llegada || 0);
+
+        gantt.push({ nombre: seleccionado.nombre, duracion: seleccionado.tiempo, color: colorMap[seleccionado.nombre] });
+        res.push({ nombre: seleccionado.nombre, espera, retorno });
+
+        tiempo = completion;
+
+        // eliminar de remaining
+        const idx = remaining.indexOf(seleccionado);
+        if (idx >= 0) remaining.splice(idx, 1);
+    }
+
+    // guardar resultados
+    window.resultadosPrioridad = res;
     return { gantt, res };
 }
 
@@ -332,6 +455,20 @@ function simularRR() {
     const { gantt, res } = computeRR();
     dibujarGantt(gantt);
     mostrarResultados(res);
+    resetTimer();
+    animationState.paused = false;
+    animationState.stopped = false;
+    const toggleBtn = document.getElementById('togglePlayBtn');
+    if (toggleBtn) { toggleBtn.disabled = false; toggleBtn.innerText = 'Pausar'; }
+    startTimer();
+    animateGantt(gantt);
+}
+
+function simularPrioridad() {
+    const { gantt, res } = computePriority();
+    dibujarGantt(gantt);
+    mostrarResultados(res);
+    // prepare timer and controls
     resetTimer();
     animationState.paused = false;
     animationState.stopped = false;
