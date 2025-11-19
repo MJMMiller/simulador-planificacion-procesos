@@ -120,7 +120,8 @@ function mostrarResultados(res) {
 
 function computeSJF() {
     // Decide mode from UI: 'preemptive' => SRTF, 'nonpreemptive' => classic SJF
-    const mode = (document.getElementById('sjfModeSelect') && document.getElementById('sjfModeSelect').value) || 'preemptive';
+    // Default to 'preemptive' so hiding/removing the select still uses expropiativo
+    const mode = document.getElementById('sjfModeSelect')?.value ?? 'preemptive';
     const procesos = getProcesos();
 
     // color mapping
